@@ -214,7 +214,7 @@ class ComputeLoss:
             * g
         )  # offsets
 
-        for i in range(self.nl):
+        for i in range(len(p)):
             anchors, shape = self.anchors[i], p[i].shape
             gain[2:6] = torch.tensor(shape)[[3, 2, 3, 2]]  # xyxy gain
 
