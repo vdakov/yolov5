@@ -12,7 +12,7 @@ from collections import OrderedDict, namedtuple
 from copy import copy
 from pathlib import Path
 from urllib.parse import urlparse
-
+import torch.nn.functional as F
 import cv2
 import numpy as np
 import pandas as pd
@@ -450,10 +450,28 @@ class Concat(nn.Module):
         self.d = dimension
 
     def forward(self, x):
-        """Concatenates a list of tensors along a specified dimension; `x` is a list of tensors, `dimension` is an
-        int.
-        """
-        return torch.cat(x, self.d)
+
+        if len(x) < 2:
+            # Handle cases where concat might receive only one tensor (unlikely in typical YOLOv5)
+            return x[0]
+
+        max_h = max(t.shape[2] for t in x)
+        max_w = max(t.shape[3] for t in x)
+
+        padded_tensors = []
+        for i, t in enumerate(x):
+            h, w = t.shape[2], t.shape[3]
+            pad_h = max_h - h
+            pad_w = max_w - w
+
+            if pad_h > 0 or pad_w > 0:
+                padding = (0, pad_w, 0, pad_h)
+                padded_t = F.pad(t, padding, mode='constant', value=0)
+                padded_tensors.append(padded_t)
+            else:
+                padded_tensors.append(t)
+
+        return torch.cat(padded_tensors, self.d)
 
 
 class DetectMultiBackend(nn.Module):

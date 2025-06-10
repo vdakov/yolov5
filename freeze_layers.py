@@ -19,7 +19,6 @@ def set_model_grad_status(img, model_instance, heights=[810, 1620]):
     model_unwrapped = de_parallel(model_instance)  # Get the base model if it's DDP-wrapped
 
     active_module_indices = ALL_5_HEADS_MODULES
-    print(img.shape)
 
     H = img.shape[2]
     H4, H5 = heights
@@ -64,9 +63,9 @@ def set_model_grad_status(img, model_instance, heights=[810, 1620]):
 
     trainable_params_count = sum(p.numel() for p in model_instance.parameters() if p.requires_grad)
     total_params_count = sum(p.numel() for p in model_instance.parameters())
-    print(
-        f"Trainable params: {trainable_params_count}/{total_params_count} ({trainable_params_count / total_params_count:.1%})"
-    )
+    # print(
+    #     f"Trainable params: {trainable_params_count}/{total_params_count} ({trainable_params_count / total_params_count:.1%})"
+    # )
     LOGGER.info(
         f"Trainable params: {trainable_params_count}/{total_params_count} ({trainable_params_count / total_params_count:.1%})"
     )

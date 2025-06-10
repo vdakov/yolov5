@@ -175,6 +175,7 @@ def create_dataloader(
     prefix="",
     shuffle=False,
     seed=0,
+    ra_yolo=False
 ):
     """Creates and returns a configured DataLoader instance for loading and processing image datasets."""
     if rect and shuffle:
@@ -195,6 +196,7 @@ def create_dataloader(
             image_weights=image_weights,
             prefix=prefix,
             rank=rank,
+            ra_yolo=ra_yolo
         )
 
     batch_size = min(batch_size, len(dataset))
@@ -557,6 +559,7 @@ class LoadImagesAndLabels(Dataset):
         prefix="",
         rank=-1,
         seed=0,
+        ra_yolo=False
     ):
         """Initializes the YOLOv5 dataset loader, handling images and their labels, caching, and preprocessing."""
         self.img_size = img_size
@@ -568,6 +571,21 @@ class LoadImagesAndLabels(Dataset):
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
         self.path = path
+
+        self.ra_yolo = ra_yolo # <<< Store the flag
+
+        # RA-YOLO disables features that rely on a fixed image size
+        if self.ra_yolo:
+            LOGGER.info(f"{prefix}RA-YOLO mode enabled: Disabling fixed size, mosaic, rect, and caching.")
+            self.img_size = None  # No fixed image size
+            self.mosaic = False
+            self.rect = False
+            cache_images = False # Caching resizes images, so it must be disabled
+        else:
+            self.mosaic = self.augment and not self.rect  # Original mosaic logic
+
+
+
         self.albumentations = Albumentations(size=img_size) if augment else None
 
         try:
@@ -768,12 +786,13 @@ class LoadImagesAndLabels(Dataset):
     #     print('ran dataset iter')
     #     #self.shuffled_vector = np.random.permutation(self.nF) if self.augment else np.arange(self.nF)
     #     return self
-
     def __getitem__(self, index):
         """Fetches the dataset item at the given index, considering linear, shuffled, or weighted sampling."""
         index = self.indices[index]  # linear, shuffled, or image_weights
 
         hyp = self.hyp
+        # Mosaic logic is automatically skipped if self.ra_yolo is True
+        # because self.mosaic is set to False in __init__
         if mosaic := self.mosaic and random.random() < hyp["mosaic"]:
             # Load mosaic
             img, labels = self.load_mosaic(index)
@@ -784,17 +803,30 @@ class LoadImagesAndLabels(Dataset):
                 img, labels = mixup(img, labels, *self.load_mosaic(random.choice(self.indices)))
 
         else:
+            # --- START OF MODIFICATION ---
             # Load image
             img, (h0, w0), (h, w) = self.load_image(index)
 
-            # Letterbox
-            shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
-            img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
-            shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
+            if self.ra_yolo:
+                # RA-YOLO is enabled: Do not resize. Only pad to stride.
+                # The shape for letterbox is the image's own shape.
+                shape = (h, w) 
+                # Call letterbox with auto=True to pad to the nearest stride, but do not scale.
+                img, ratio, pad = letterbox(img, shape, auto=True, scaleup=False)
+                # The resize ratio is 1.0 since we didn't scale the image.
+                shapes = (h0, w0), ((1.0, 1.0), pad)  
+            else:
+                # Original behavior: Resize to a fixed size (self.img_size or batch_shape)
+                shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size
+                img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
+                shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
             if labels.size:  # normalized xywh to pixel xyxy format
+                # This label conversion works for both cases as it depends on the
+                # output of letterbox (ratio, pad) and the pre-letterbox dimensions (w, h).
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
+            # --- END OF MODIFICATION ---
 
             if self.augment:
                 img, labels = random_perspective(
@@ -809,10 +841,13 @@ class LoadImagesAndLabels(Dataset):
 
         nl = len(labels)  # number of labels
         if nl:
+            # This correctly normalizes labels based on the final image shape after letterbox and augmentations.
             labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3)
 
         if self.augment:
             # Albumentations
+            # When ra_yolo=True, self.albumentations is initialized without a fixed size,
+            # so it should handle variable-sized inputs.
             img, labels = self.albumentations(img, labels)
             nl = len(labels)  # update after albumentations
 
@@ -845,6 +880,82 @@ class LoadImagesAndLabels(Dataset):
 
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes
 
+    # def __getitem__(self, index):
+    #     """Fetches the dataset item at the given index, considering linear, shuffled, or weighted sampling."""
+    #     index = self.indices[index]  # linear, shuffled, or image_weights
+
+    #     hyp = self.hyp
+    #     if mosaic := self.mosaic and random.random() < hyp["mosaic"]:
+    #         # Load mosaic
+    #         img, labels = self.load_mosaic(index)
+    #         shapes = None
+
+    #         # MixUp augmentation
+    #         if random.random() < hyp["mixup"]:
+    #             img, labels = mixup(img, labels, *self.load_mosaic(random.choice(self.indices)))
+
+    #     else:
+    #         # Load image
+    #         img, (h0, w0), (h, w) = self.load_image(index)
+
+    #         # Letterbox
+    #         shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
+    #         img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
+    #         shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
+
+    #         labels = self.labels[index].copy()
+    #         if labels.size:  # normalized xywh to pixel xyxy format
+    #             labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
+
+    #         if self.augment:
+    #             img, labels = random_perspective(
+    #                 img,
+    #                 labels,
+    #                 degrees=hyp["degrees"],
+    #                 translate=hyp["translate"],
+    #                 scale=hyp["scale"],
+    #                 shear=hyp["shear"],
+    #                 perspective=hyp["perspective"],
+    #             )
+
+    #     nl = len(labels)  # number of labels
+    #     if nl:
+    #         labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3)
+
+    #     if self.augment:
+    #         # Albumentations
+    #         img, labels = self.albumentations(img, labels)
+    #         nl = len(labels)  # update after albumentations
+
+    #         # HSV color-space
+    #         augment_hsv(img, hgain=hyp["hsv_h"], sgain=hyp["hsv_s"], vgain=hyp["hsv_v"])
+
+    #         # Flip up-down
+    #         if random.random() < hyp["flipud"]:
+    #             img = np.flipud(img)
+    #             if nl:
+    #                 labels[:, 2] = 1 - labels[:, 2]
+
+    #         # Flip left-right
+    #         if random.random() < hyp["fliplr"]:
+    #             img = np.fliplr(img)
+    #             if nl:
+    #                 labels[:, 1] = 1 - labels[:, 1]
+
+    #         # Cutouts
+    #         # labels = cutout(img, labels, p=0.5)
+    #         # nl = len(labels)  # update after cutout
+
+    #     labels_out = torch.zeros((nl, 6))
+    #     if nl:
+    #         labels_out[:, 1:] = torch.from_numpy(labels)
+
+    #     # Convert
+    #     img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+    #     img = np.ascontiguousarray(img)
+
+    #     return torch.from_numpy(img), labels_out, self.im_files[index], shapes
+
     def load_image(self, i):
         """
         Loads an image by index, returning the image, its original dimensions, and resized dimensions.
@@ -863,6 +974,10 @@ class LoadImagesAndLabels(Dataset):
                 im = cv2.imread(f)  # BGR
                 assert im is not None, f"Image Not Found {f}"
             h0, w0 = im.shape[:2]  # orig hw
+            if self.ra_yolo:
+            # RA-YOLO is enabled, so we do not perform any resizing in this function.
+            # The "resized" dimensions are the same as the original dimensions.
+                return im, (h0, w0), (h0, w0)
             r = self.img_size / max(h0, w0)  # ratio
             if r != 1:  # if sizes are not equal
                 interp = cv2.INTER_LINEAR if (self.augment or r > 1) else cv2.INTER_AREA
