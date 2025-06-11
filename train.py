@@ -225,7 +225,7 @@ def train(hyp, opt, device, callbacks):
     else:
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
         if opt.ra_yolo:
-            model = RAModel(cfg or ckpt["model"].yaml, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)
+            model = RAModel(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)
     amp = check_amp(model)  # check AMP
 
     # Freeze
