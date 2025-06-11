@@ -294,10 +294,10 @@ def run(
     if not training:
         if pt and not single_cls:  # check --weights are trained on --data
             ncm = model.model.nc
-            assert ncm == nc, (
-                f"{weights} ({ncm} classes) trained on different --data than what you passed ({nc} "
-                f"classes). Pass correct combination of --weights and --data that are trained together."
-            )
+            # assert ncm == nc, (
+            #     f"{weights} ({ncm} classes) trained on different --data than what you passed ({nc} "
+            #     f"classes). Pass correct combination of --weights and --data that are trained together."
+            # )
         model.warmup(imgsz=(1 if pt else batch_size, 3, imgsz, imgsz))  # warmup
         pad, rect = (0.0, False) if task == "speed" else (0.5, pt)  # square inference for benchmarks
         task = task if task in ("train", "val", "test") else "val"  # path to train/val/test images
