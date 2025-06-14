@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 from copy import deepcopy
+from typing import List, Optional, Union
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -225,10 +226,11 @@ def train(hyp, opt, device, callbacks):
     else:
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
         if opt.ra_yolo:
-            model = RAModel(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)
+            model = RAModel(cfg or ckpt["model"].yaml, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)
     amp = check_amp(model)  # check AMP
 
     # Freeze
+    
     freeze = [f"model.{x}." for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
     for k, v in model.named_parameters():
         v.requires_grad = True  # train all layers
@@ -325,6 +327,7 @@ def train(hyp, opt, device, callbacks):
             workers=workers * 2,
             pad=0.5,
             prefix=colorstr("val: "),
+            ra_yolo=opt.ra_yolo,
         )[0]
 
         if not resume:
@@ -984,6 +987,7 @@ def run(**kwargs):
         - Datasets: https://github.com/ultralytics/yolov5/tree/master/data
         - Tutorial: https://docs.ultralytics.com/yolov5/tutorials/train_custom_data
     """
+    
     opt = parse_opt(True)
     for k, v in kwargs.items():
         setattr(opt, k, v)
