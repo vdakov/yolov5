@@ -88,13 +88,14 @@ class DetectRAYOLO(nn.Module):
         self.register_buffer("anchors", torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
-        self.scale_thresholds = [810, 1620]
+        self.scale_thresholds = [500, 1000]
 
     def forward(self, x, H):
         """Processes input through YOLOv5 layers, altering shape for detection: `x(bs, 3, ny, nx, 85)`."""
         z = []  # inference output
         H4, H5 = self.scale_thresholds
-
+        
+        decrease_heads = 0
         if H > H5:
             decrease_heads = 0
         if H5 >= H and H >= H4:
@@ -103,6 +104,9 @@ class DetectRAYOLO(nn.Module):
             decrease_heads = 2
 
         for i in range(self.nl - decrease_heads):
+
+            if x[i] is None:
+                raise ValueError(f"x[{i}] is None before passing to convolution layer.")
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
@@ -432,7 +436,7 @@ class DetectionModelRaYOLO(BaseModel):
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml["nc"])]  # default names
         self.inplace = self.yaml.get("inplace", True)
-        self.scale_thresholds = [810, 1620]
+        self.scale_thresholds = [500, 1000]
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
@@ -482,12 +486,13 @@ class DetectionModelRaYOLO(BaseModel):
 
         y, dt = [], []  # outputs
         for i, m in enumerate(self.model):
-            if i > skip_at and i < resume_at:
-                y.append([None])
-                continue
-            if i >= jump_to_end and i < len(self.model) - 1:
-                y.append([None])
-                continue
+            if H <= H5:
+                if i > skip_at and i < resume_at:
+                    y.append([None])
+                    continue
+                if i >= jump_to_end and i < len(self.model) - 1:
+                    y.append([None])
+                    continue
 
             if m.f != -1:  # and i < resume_at:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers

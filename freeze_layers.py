@@ -15,7 +15,7 @@ THREE_HEADS_MODULES = set(range(0, 7))  # Includes modules 0 through 6
 THREE_HEADS_MODULES.update(range(18, 35))  # Includes modules 18 through 34
 
 
-def set_model_grad_status(img, model_instance, heights=[810, 1620]):
+def set_model_grad_status(img, model_instance, heights=[500, 1000]):
     model_unwrapped = de_parallel(model_instance)  # Get the base model if it's DDP-wrapped
 
     active_module_indices = ALL_5_HEADS_MODULES
