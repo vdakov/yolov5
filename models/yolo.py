@@ -422,6 +422,7 @@ class DetectionModelRaYOLO(BaseModel):
             import yaml  # for torch hub
 
             self.yaml_file = Path(cfg).name
+            print(self.yaml_file)
             with open(cfg, encoding="ascii", errors="ignore") as f:
                 self.yaml = yaml.safe_load(f)  # model dict
 
@@ -446,7 +447,7 @@ class DetectionModelRaYOLO(BaseModel):
                 """Passes the input 'x' through the model and returns the processed output."""
                 return self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
 
-            s = 256  # 2x min stride
+            s = 1024  # 2x min stride. Has to be larger than H5 for RA-YOLO. Pain.
             m.inplace = self.inplace
             m.stride = torch.tensor([s / x.shape[-2] for x in _forward(torch.zeros(1, ch, s, s))])  # forward
 
