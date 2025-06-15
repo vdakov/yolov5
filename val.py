@@ -214,6 +214,7 @@ def run(
     plots=True,
     callbacks=Callbacks(),
     compute_loss=None,
+    ra_yolo=False
 ):
     """
     Evaluates a YOLOv5 model on a dataset and logs performance metrics.
@@ -308,6 +309,7 @@ def run(
             rect=rect,
             workers=workers,
             prefix=colorstr(f"{task}: "),
+            ra_yolo=ra_yolo,
         )[0]
 
     seen = 0

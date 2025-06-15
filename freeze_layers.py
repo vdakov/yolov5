@@ -63,9 +63,7 @@ def set_model_grad_status(img, model_instance, heights=[500, 1000]):
 
     trainable_params_count = sum(p.numel() for p in model_instance.parameters() if p.requires_grad)
     total_params_count = sum(p.numel() for p in model_instance.parameters())
-    # print(
+
+    # LOGGER.info(
     #     f"Trainable params: {trainable_params_count}/{total_params_count} ({trainable_params_count / total_params_count:.1%})"
     # )
-    LOGGER.info(
-        f"Trainable params: {trainable_params_count}/{total_params_count} ({trainable_params_count / total_params_count:.1%})"
-    )
